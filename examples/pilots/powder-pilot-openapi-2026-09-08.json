@@ -1,0 +1,799 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Powder",
+    "description": "Welcome to Powder! This guide provides an overview of our API endpoints and answers to frequently asked questions. For detailed information on individual endpoints, please refer to our endpoint-specific documentation.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.powderfi.com"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/v1.0/public/file_uploads/": {
+      "post": {
+        "tags": [
+          "/file_uploads"
+        ],
+        "summary": "Upload",
+        "operationId": "file_uploads",
+        "description": "Upload financial documents (PDF, PNG, JPEG, XLSX) with a statement_type and optional portfolio_id.\n\nSupported file formats: `.pdf`, `.xlsx`, `.png`, `.jpg`, `.jpeg`\n\nYou can optionally specify `source_firm_id` to indicate the originating firm (by ID or name).\n\nIf the file fails validation (e.g. password-protected, corrupt, empty), a `422` response is returned with a specific `error_code`. See the 422 response schema for all possible codes.",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "portfolio_id": {
+                    "type": "integer",
+                    "description": "Portfolio ID"
+                  },
+                  "statement_type": {
+                    "type": "string",
+                    "enum": [
+                      "brokerage",
+                      "tax_forms",
+                      "insurance_forms",
+                      "will_forms",
+                      "trust",
+                      "balance_sheet"
+                    ],
+                    "description": "Type of statement"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "File to process"
+                  },
+                  "source_firm_id": {
+                    "type": "string",
+                    "description": "The originating firm for this document. Accepts either the firm's numeric ID or its name."
+                  }
+                },
+                "required": [
+                  "file",
+                  "statement_type"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "File uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "File upload ID"
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Initial upload status"
+                    },
+                    "portfolio_id": {
+                      "type": "integer",
+                      "description": "Portfolio ID"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status"
+                  ]
+                },
+                "examples": {
+                  "Created": {
+                    "summary": "Created",
+                    "value": {
+                      "id": 769,
+                      "status": "uploaded",
+                      "portfolio_id": 580
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — invalid parameters or upload failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "description": "Field-level validation errors"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Error description"
+                    }
+                  }
+                },
+                "examples": {
+                  "Missing file": {
+                    "summary": "Missing file",
+                    "value": {
+                      "error": {
+                        "file": [
+                          "No file was submitted."
+                        ],
+                        "statement_type": [
+                          "This field is required."
+                        ]
+                      }
+                    }
+                  },
+                  "Upload failure": {
+                    "summary": "Upload failure",
+                    "value": {
+                      "message": "There was an error uploading the file"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — no access to the specified portfolio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "description": "Access denied description"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                },
+                "examples": {
+                  "Forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "message": "Cannot access the portfolio with id: 678"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity — file failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable error description"
+                    },
+                    "error_code": {
+                      "type": "string",
+                      "description": "Validation error code identifying the specific file issue.",
+                      "enum": [
+                        "PASSWORD_PROTECTED_PDF",
+                        "CORRUPT_PDF",
+                        "TRUNCATED_PDF",
+                        "UNREADABLE_PDF",
+                        "EMPTY_PDF",
+                        "INVALID_PDF_HEADER",
+                        "PDF_FILE_READ_ERROR",
+                        "PASSWORD_PROTECTED_EXCEL",
+                        "CORRUPT_EXCEL_ZIP",
+                        "INVALID_EXCEL_FILE",
+                        "INVALID_EXCEL_FORMAT",
+                        "EMPTY_EXCEL",
+                        "EXCEL_FILE_TOO_LARGE",
+                        "EXCEL_FILE_READ_ERROR",
+                        "UNSUPPORTED_FILE_TYPE"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "error_code"
+                  ]
+                },
+                "examples": {
+                  "Password Protected PDF": {
+                    "summary": "Password Protected PDF",
+                    "value": {
+                      "message": "The uploaded PDF is password-protected. Please remove the password and upload again.",
+                      "error_code": "PASSWORD_PROTECTED_PDF"
+                    }
+                  },
+                  "Empty Excel": {
+                    "summary": "Empty Excel",
+                    "value": {
+                      "message": "The uploaded Excel file appears to be empty (no worksheets).",
+                      "error_code": "EMPTY_EXCEL"
+                    }
+                  },
+                  "Unsupported File Type": {
+                    "summary": "Unsupported File Type",
+                    "value": {
+                      "message": "Unsupported file type (.doc). Supported formats: .jpeg, .jpg, .pdf, .png, .xlsx",
+                      "error_code": "UNSUPPORTED_FILE_TYPE"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1.0/public/file_uploads/{id}": {
+      "get": {
+        "tags": [
+          "/file_uploads/{id}"
+        ],
+        "summary": "Check Status",
+        "operationId": "file_uploads_status",
+        "description": "Get the processing status of a specific uploaded document by ID.\n\nThe `status` field indicates the current processing state. When status is `closed`, the response includes an `error` object with a `code` and human-readable `message` explaining why the file could not be processed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "File upload ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File upload status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "File upload ID"
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "File processing status.",
+                      "enum": [
+                        "uploaded",
+                        "processing",
+                        "in_review",
+                        "done",
+                        "failed",
+                        "error",
+                        "closed"
+                      ]
+                    },
+                    "portfolio_id": {
+                      "type": "integer",
+                      "description": "Portfolio ID"
+                    },
+                    "error": {
+                      "type": "object",
+                      "description": "Error details (only present when status is `closed`)",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "description": "Close-out error code indicating why the file could not be processed.",
+                          "enum": [
+                            "password_protected",
+                            "missing_pages",
+                            "missing_holdings",
+                            "unsupported_document",
+                            "file_corrupted",
+                            "empty_file",
+                            "parse_failed",
+                            "low_quality_scan",
+                            "file_deleted",
+                            "duplicate_file",
+                            "customer_requested",
+                            "other"
+                          ]
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "Human-readable error message"
+                        }
+                      }
+                    },
+                    "closed_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "ISO 8601 timestamp when the file was closed (only present when status is 'closed')"
+                    }
+                  }
+                },
+                "examples": {
+                  "Processing": {
+                    "summary": "Processing",
+                    "value": {
+                      "id": 769,
+                      "status": "processing",
+                      "portfolio_id": 580
+                    }
+                  },
+                  "Done": {
+                    "summary": "Done",
+                    "value": {
+                      "id": 769,
+                      "status": "done",
+                      "portfolio_id": 580
+                    }
+                  },
+                  "Closed with error": {
+                    "summary": "Closed with error",
+                    "value": {
+                      "id": 1234,
+                      "status": "closed",
+                      "portfolio_id": 5678,
+                      "error": {
+                        "code": "password_protected",
+                        "message": "This document is password protected. Please remove the password and re-upload."
+                      },
+                      "closed_at": "2026-03-31T18:30:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — file not found or access denied"
+          }
+        }
+      }
+    },
+    "/api/v1.0/public/file_uploads/{id}/data": {
+      "get": {
+        "tags": [
+          "/file_uploads/{id}/data"
+        ],
+        "summary": "Retrieve Data",
+        "operationId": "file_uploads_data",
+        "description": "Get processed transaction and portfolio data from an uploaded file.\n\nThe response structure in the `data` field varies by `statement_type`:\n\n| Statement Type | Data Structure |\n|----------------|----------------|\n| `brokerage` | `data.ownerships[]` — array of holdings with ticker, value, cost basis, asset class, etc. |\n| `tax_forms` | `data.forms[]` — array of tax form extractions with form type and reviewed data |\n| `trust` | `data.extracted_data` — trust document fields (grantors, trustees, distribution, etc.) |\n| `balance_sheet` | `data.ownerships[]` — array of $cash holdings, one per balance sheet line item (account name, value, account type) |\n\n### Bounding Box Citations\n\nWhen `enable_bbox_citations` is enabled for your firm **and** `include_bbox=true` is passed as a query parameter, each ownership includes a `bounding_boxes` field containing PDF coordinates for audited fields.\n\n**Response values:**\n- `null` — Feature not enabled for your firm\n- `{}` — Feature enabled, but no citation data available for this holding\n- `{field: {page, x1, y1, x2, y2}}` — Citation coordinates for each audited field\n\n**Coordinate system:** Values are percentages (0–100) of page dimensions. Format is XYXY — `x1,y1` is the top-left corner and `x2,y2` is the bottom-right corner.\n\n**Available fields in `bounding_boxes`:**\n\n| Field | Description |\n|-------|-------------|\n| `statement_asset_value` | Market value |\n| `quantity` | Share/unit quantity |\n| `statement_price` | Price per share/unit |\n| `statement_cost_basis` | Cost basis |\n| `statement_gain_loss` | Unrealized gain/loss |\n| `name` | Holding name |\n| `ticker` | Ticker symbol |\n\nOnly fields with citation data are included. Fields without bounding box data are omitted from the object.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "File upload ID"
+          },
+          {
+            "name": "include_bbox",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "1",
+                "false",
+                "0"
+              ],
+              "default": "false"
+            },
+            "description": "Set to \"true\" or \"1\" to include per-field bounding box citations in the ownership response. Requires enable_bbox_citations to be enabled for your firm."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processed data retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "File upload ID"
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "File processing status"
+                    },
+                    "statement_type": {
+                      "type": "string",
+                      "description": "Type of statement processed"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "Processed data payload — structure varies by statement_type (see endpoint description)"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "description": "Number of items returned"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Current page number (for paginated responses)"
+                    }
+                  }
+                },
+                "examples": {
+                  "OK - holdings output": {
+                    "summary": "OK - holdings output",
+                    "value": {
+                      "id": 5238,
+                      "status": "done",
+                      "data": {
+                        "portfolio_id": 2542,
+                        "ownerships": [
+                          {
+                            "name": "FDIC INSURED DEPOSIT AT FIFTH THIRD BANK IRANOT COVERED BY SIPC",
+                            "account_type": "Brokerage",
+                            "account_name": "Fidelity *111111",
+                            "entity": "John W. Doe - Individual",
+                            "ticker": "QPIKQ",
+                            "isin": null,
+                            "cusip": null,
+                            "statement_asset_value": 3500.5,
+                            "statement_cost_basis": null,
+                            "statement_original_cost_basis": null,
+                            "statement_gain_loss": null,
+                            "quantity": 3500.5,
+                            "statement_price": 1,
+                            "eod_valuations": 0,
+                            "eod_gain_loss": null,
+                            "eod_asset_value": null,
+                            "purchase_date": null,
+                            "currency": null,
+                            "account_allocation": 0.0324,
+                            "portfolio_allocation": 0.0126,
+                            "dividend_yield": null,
+                            "expense_ratio": null,
+                            "asset_class_level_1": "Cash",
+                            "asset_class_level_2": "Cash",
+                            "asset_class_level_3": "Cash",
+                            "asset_class_level_4": "Cash",
+                            "total_commitment": null,
+                            "unfunded_commitment": null,
+                            "total_contribution": null,
+                            "total_distribution": null,
+                            "vintage": null,
+                            "statement_date": "07/31/2015",
+                            "investment_type": null,
+                            "statement_page_number": 6,
+                            "bounding_boxes": null
+                          },
+                          {
+                            "name": "DOUBLELINE TOTAL RETURN BOND FUND CLASS I",
+                            "account_type": "Brokerage",
+                            "account_name": "Fidelity *111111",
+                            "entity": "John W. Doe - Individual",
+                            "ticker": "DBLTX",
+                            "isin": "US2586201038",
+                            "cusip": "U258620103",
+                            "statement_asset_value": 11361.52,
+                            "statement_cost_basis": 7536.91,
+                            "statement_original_cost_basis": null,
+                            "statement_gain_loss": 3824.61,
+                            "quantity": 1015.328,
+                            "statement_price": 11.19,
+                            "eod_valuations": 8.87,
+                            "eod_gain_loss": 1469.05,
+                            "eod_asset_value": 9005.96,
+                            "purchase_date": null,
+                            "currency": null,
+                            "account_allocation": 0.1051,
+                            "portfolio_allocation": 0.0407,
+                            "dividend_yield": 0.048634,
+                            "expense_ratio": 0.005,
+                            "asset_class_level_1": "Bonds",
+                            "asset_class_level_2": "US Bonds",
+                            "asset_class_level_3": "US Short-term Bonds",
+                            "asset_class_level_4": "US Short-term Bonds",
+                            "total_commitment": null,
+                            "unfunded_commitment": null,
+                            "total_contribution": null,
+                            "total_distribution": null,
+                            "vintage": null,
+                            "statement_date": "07/31/2015",
+                            "investment_type": "Mutual Fund",
+                            "statement_page_number": 6,
+                            "bounding_boxes": null
+                          },
+                          {
+                            "name": "APPLE",
+                            "account_type": "Brokerage",
+                            "account_name": "Fidelity *111111",
+                            "entity": "John W. Doe - Individual",
+                            "ticker": "AAPL",
+                            "isin": "US0378331005",
+                            "cusip": "U037833100",
+                            "statement_asset_value": 13132.75,
+                            "statement_cost_basis": 9350.12,
+                            "statement_original_cost_basis": null,
+                            "statement_gain_loss": 3782.63,
+                            "quantity": 25,
+                            "statement_price": 525.31,
+                            "eod_valuations": 250.12,
+                            "eod_gain_loss": -3097.12,
+                            "eod_asset_value": 6253,
+                            "purchase_date": null,
+                            "currency": null,
+                            "account_allocation": 0.1215,
+                            "portfolio_allocation": 0.0471,
+                            "dividend_yield": 0.004,
+                            "expense_ratio": null,
+                            "asset_class_level_1": "Equity",
+                            "asset_class_level_2": "US Equity",
+                            "asset_class_level_3": "US Large Cap Growth Equity",
+                            "asset_class_level_4": "US Large Cap Growth Equity",
+                            "total_commitment": null,
+                            "unfunded_commitment": null,
+                            "total_contribution": null,
+                            "total_distribution": null,
+                            "vintage": null,
+                            "statement_date": "07/31/2015",
+                            "investment_type": "Stock",
+                            "statement_page_number": 7,
+                            "bounding_boxes": null
+                          }
+                        ]
+                      },
+                      "count": 34,
+                      "page": 1
+                    }
+                  },
+                  "OK - tax output": {
+                    "summary": "OK - tax output",
+                    "value": {
+                      "id": 902,
+                      "status": "done",
+                      "statement_type": "tax_forms",
+                      "data": {
+                        "portfolio_id": 664,
+                        "forms": [
+                          {
+                            "form_review_id": 37,
+                            "form_type": "form_1040",
+                            "form_type_name": "Form 1040",
+                            "reviewed_data": {
+                              "agi": "846394",
+                              "refund": null,
+                              "penalty": null,
+                              "total_tax": "230965",
+                              "w2_income": "579177",
+                              "amount_owed": "24477",
+                              "filing_status": "married_filing_jointly",
+                              "taxable_income": "786266",
+                              "total_payments": "206488",
+                              "taxable_interest": "4312",
+                              "ordinary_dividends": "1351",
+                              "qualified_dividends": "1349",
+                              "std_itemized_deduction": "60128"
+                            }
+                          },
+                          {
+                            "form_review_id": 36,
+                            "form_type": "form_1040_schedule_a",
+                            "form_type_name": "Form 1040 Schedule A",
+                            "reviewed_data": {
+                              "salt_total": "78068",
+                              "charity_cash": "50128",
+                              "salt_deductible": "10000",
+                              "mortgage_interest": null
+                            }
+                          },
+                          {
+                            "form_review_id": 35,
+                            "form_type": "form_1040_schedule_d",
+                            "form_type_name": "Form 1040 Schedule D",
+                            "reviewed_data": {
+                              "ltcg_ltcl": "-102276",
+                              "stcg_stcl": null,
+                              "total_cg_cl": "-102276",
+                              "lt_capital_loss_carryforward": "-102276"
+                            }
+                          }
+                        ]
+                      },
+                      "count": 15
+                    }
+                  },
+                  "OK - trust output": {
+                    "summary": "OK - trust output",
+                    "value": {
+                      "id": 904,
+                      "status": "done",
+                      "statement_type": "trust",
+                      "data": {
+                        "portfolio_id": 665,
+                        "extracted_data": {
+                          "family": "Adam Smith (husband), Mary Smith (wife), Jenny Smith (child)",
+                          "summary": "The Smith Family Living Trust, established on December 15th, 2021, by Adam and Mary Smith, outlines the management and distribution of their assets.",
+                          "grantors": "Adam Smith and Mary Smith",
+                          "property": "Residence at 2504 Hillside Drive, Burlingame California",
+                          "trustees": "Adam Smith and Mary Smith",
+                          "successors": "Martha Smith then Marty Smith",
+                          "trust_name": "The Smith Family Living Trust",
+                          "distribution": "Upon the death of the survivor of Adam and Mary Smith, the trustees shall administer and distribute the remaining trust property to their living descendants, by representation.",
+                          "established_date": "December 15th, 2021"
+                        }
+                      },
+                      "count": 1
+                    }
+                  },
+                  "OK - holdings with bounding box citations": {
+                    "summary": "OK - holdings with bounding box citations (enable_bbox_citations=true)",
+                    "value": {
+                      "id": 5238,
+                      "status": "done",
+                      "data": {
+                        "portfolio_id": 2542,
+                        "ownerships": [
+                          {
+                            "name": "APPLE INC",
+                            "account_type": "Brokerage",
+                            "account_name": "Fidelity *111111",
+                            "entity": null,
+                            "ticker": "AAPL",
+                            "isin": null,
+                            "cusip": null,
+                            "statement_asset_value": 15230.5,
+                            "statement_cost_basis": 8500,
+                            "statement_original_cost_basis": null,
+                            "statement_gain_loss": 6730.5,
+                            "quantity": 85,
+                            "statement_price": 179.18,
+                            "eod_valuations": null,
+                            "eod_gain_loss": null,
+                            "eod_asset_value": null,
+                            "purchase_date": null,
+                            "currency": null,
+                            "account_allocation": 0.1523,
+                            "portfolio_allocation": 0.0654,
+                            "dividend_yield": 0.55,
+                            "expense_ratio": null,
+                            "asset_class_level_1": "Equities",
+                            "asset_class_level_2": "US Equities",
+                            "asset_class_level_3": "US Large Cap",
+                            "asset_class_level_4": "US Large Cap Growth",
+                            "total_commitment": null,
+                            "unfunded_commitment": null,
+                            "total_contribution": null,
+                            "total_distribution": null,
+                            "vintage": null,
+                            "statement_date": "03/31/2026",
+                            "investment_type": null,
+                            "statement_page_number": 4,
+                            "bounding_boxes": {
+                              "name": {
+                                "page": 4,
+                                "x1": 3,
+                                "y1": 32,
+                                "x2": 18,
+                                "y2": 35
+                              },
+                              "statement_asset_value": {
+                                "page": 4,
+                                "x1": 54,
+                                "y1": 32,
+                                "x2": 62,
+                                "y2": 35
+                              },
+                              "statement_cost_basis": {
+                                "page": 4,
+                                "x1": 64,
+                                "y1": 32,
+                                "x2": 72,
+                                "y2": 35
+                              },
+                              "statement_gain_loss": {
+                                "page": 4,
+                                "x1": 74,
+                                "y1": 32,
+                                "x2": 82,
+                                "y2": 35
+                              },
+                              "quantity": {
+                                "page": 4,
+                                "x1": 28,
+                                "y1": 32,
+                                "x2": 37,
+                                "y2": 35
+                              },
+                              "statement_price": {
+                                "page": 4,
+                                "x1": 42,
+                                "y1": 32,
+                                "x2": 48,
+                                "y2": 35
+                              },
+                              "ticker": {
+                                "page": 4,
+                                "x1": 20,
+                                "y1": 32,
+                                "x2": 26,
+                                "y2": 35
+                              }
+                            }
+                          },
+                          {
+                            "name": "VANGUARD TOTAL BOND MARKET INDEX",
+                            "account_type": "Brokerage",
+                            "account_name": "Fidelity *111111",
+                            "entity": null,
+                            "ticker": "BND",
+                            "isin": null,
+                            "cusip": null,
+                            "statement_asset_value": 5000,
+                            "statement_cost_basis": 5200,
+                            "statement_original_cost_basis": null,
+                            "statement_gain_loss": -200,
+                            "quantity": 50,
+                            "statement_price": 100,
+                            "eod_valuations": null,
+                            "eod_gain_loss": null,
+                            "eod_asset_value": null,
+                            "purchase_date": null,
+                            "currency": null,
+                            "account_allocation": 0.05,
+                            "portfolio_allocation": 0.0215,
+                            "dividend_yield": 3.2,
+                            "expense_ratio": 0.03,
+                            "asset_class_level_1": "Fixed Income",
+                            "asset_class_level_2": "US Fixed Income",
+                            "asset_class_level_3": "US Aggregate Bond",
+                            "asset_class_level_4": "US Aggregate Bond",
+                            "total_commitment": null,
+                            "unfunded_commitment": null,
+                            "total_contribution": null,
+                            "total_distribution": null,
+                            "vintage": null,
+                            "statement_date": "03/31/2026",
+                            "investment_type": null,
+                            "statement_page_number": 4,
+                            "bounding_boxes": {}
+                          }
+                        ]
+                      },
+                      "count": 2,
+                      "page": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — file not found or access denied"
+          }
+        }
+      }
+    }
+  }
+}

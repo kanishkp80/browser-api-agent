@@ -1,0 +1,43 @@
+{
+  "name": "browser-api-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Durable API simulation through authenticated browser workflows",
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "bin": {
+    "browser-api": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
+    "cli": "tsx src/cli.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "format": "prettier --write src test docs examples/demo-site.ts README.md PLAN.md package.json tsconfig.json",
+    "demo:site": "tsx examples/demo-site.ts"
+  },
+  "dependencies": {
+    "@e2b/desktop": "2.3.3",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@openai/agents": "0.17.2",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "commander": "15.0.0",
+    "fastify": "5.12.3",
+    "playwright": "1.63.0",
+    "yaml": "2.9.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

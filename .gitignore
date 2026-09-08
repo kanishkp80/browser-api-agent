@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Browser API service, Node tooling, and local state
+node_modules/
+coverage/
+.env.*
+!.env.example
+.browser-api/
+*.sqlite*
+*.db
+*.db-*
+test-results/
+.DS_Store

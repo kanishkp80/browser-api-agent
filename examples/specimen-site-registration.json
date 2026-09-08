@@ -1,0 +1,68 @@
+{
+  "site_id": "specimen-docs",
+  "account_id": "dedicated-test-account",
+  "base_url": "https://specimen.example.test",
+  "allowed_origins": ["https://specimen.example.test"],
+  "spec": {
+    "openapi": "3.1.0",
+    "info": {
+      "title": "Local specimen document site",
+      "version": "1.0.0"
+    },
+    "paths": {
+      "/documents/parse": {
+        "post": {
+          "operationId": "parseDocument",
+          "summary": "Upload and parse a specimen document",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "multipart/form-data": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "document": {
+                      "type": "string",
+                      "format": "binary",
+                      "description": "Document selected through the site upload control."
+                    },
+                    "page_range": {
+                      "type": "string",
+                      "pattern": "^[0-9]+(?:-[0-9]+)?$"
+                    }
+                  },
+                  "required": ["document"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Complete parse result",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "document_id": { "type": "string" },
+                      "chunks": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    },
+                    "required": ["document_id", "chunks"],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

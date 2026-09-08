@@ -1,8 +1,22 @@
 # Browser API agent — working plan
 
-Status: interactive planning; no implementation or authenticated site exploration yet.
+Status: first implementation and local validation in progress. Public pilot contracts are pinned. Authenticated Powder/Reducto workflows and live E2B deployment have not been validated.
 
 Working directory: `/Users/kanishkp/workspace/browser-api-agent`. This `PLAN.md` is the maintained working plan; PDF exports are dated snapshots.
+
+## Implementation checkpoint — 2026-09-08
+
+The initial TypeScript service is implemented with the OpenAI Agents SDK, explicit `gpt-6-astra` / maximum reasoning, bounded parallel contract and UI reviewers, and a Playwright browser baseline. This is the application implementation of the requested Ultra pattern; it does not claim equivalence to the Codex desktop harness. Camofox remains an agreed comparison before final backend selection.
+
+Implemented: call-triggered discovery, persisted operation/event records, stable caller request IDs, schema intake/validation, scoped observed recipes with guarded input bindings, deterministic replay, MCP stdio and Streamable HTTP, CLI/NDJSON event following, local profiles, an E2B provider, complete artifact storage outside browser workers, and exclusive human handoffs. A target-shaped HTTP compatibility facade remains future work.
+
+The service uses one durable SQLite/files volume outside E2B. A job retains its account's browser page while waiting; the worker may serve another independent account, but cannot replace the first job's page. Recipes learned from a job replay preparation/submission, then inspect live job state. This conservative first implementation supersedes the proposed same-page job interleaving below until durable job correlation or per-operation tabs are implemented.
+
+Correctness boundaries: checkpoint interactive actions before dispatch; treat arbitrary button clicks as submission boundaries; reconcile interrupted actions instead of retrying them; persist human submission outcomes before releasing control; require exclusive claim tokens; and label schema-valid workflows `observed`. Pilot API parity needs stronger semantic evidence than a matching JSON schema.
+
+Validation includes a real local Chromium UI, uploaded file bytes, a complete captured response, a different input after service restart, real MCP SDK clients, and a CLI subprocess. Opt-in live tests exercise the actual Astra model. Detailed validation results and runtime instructions live in [README.md](README.md); pilot source hashes and contract gaps live in [docs/PILOT-COVERAGE.md](docs/PILOT-COVERAGE.md).
+
+Remaining acceptance work: legitimate pilot login and test fixtures, exact response/postcondition evidence, Reducto's published schema ambiguity and input dependency, a pinned E2B template/key with live takeover/recovery validation, Camofox comparison, and a real calling-agent integration. New E2B sandboxes currently require fresh human login; protected authentication export/restore remains unimplemented. General per-field response aggregation, multiple business submissions in one workflow, retention policy, and multi-service deployment also remain outside this first slice.
 
 ## Goal and agreed decisions
 
@@ -11,7 +25,7 @@ Build a reusable engine that accepts an API specification, learns a website thro
 - Browser operations may use page content, DOM/accessibility, forms, uploads, and downloads.
 - Business operations must go through the UI. Replaying authenticated network requests is outside the agreed scope.
 - Support both deployment modes: a dedicated local browser profile for testing and an E2B-hosted browser session for server environments. E2B credentials are supplied through server configuration. Both modes are required; implementation can begin locally.
-- Evaluate Camofox Browser alongside direct Playwright behind a replaceable browser adapter. This comparison is agreed; the backend is not yet selected or installed.
+- Evaluate Camofox Browser alongside direct Playwright behind a replaceable browser adapter. Playwright is the implemented baseline; the Camofox comparison remains pending before final backend selection.
 - Use OpenAI GPT-6 Astra (`gpt-6-astra`) in Astra Ultra mode for discovery, workflow learning, unfamiliar-page reasoning, and recovery. The user has confirmed maximum reasoning with proactive delegation of useful independent work to subagents.
 - Target exact behavior for a declared supported endpoint subset, with explicit coverage gaps.
 - Provide both an MCP server and a CLI so other agents can discover capabilities, invoke supported endpoints, retrieve results, and coordinate human help. Both use the same execution service and browser queue.
@@ -24,7 +38,7 @@ Build a reusable engine that accepts an API specification, learns a website thro
 - When the agent is confused, give browser control back to the user and ask for specific help. The handoff should identify the unresolved step and what demonstration or clarification is needed.
 - Start with one account and queued browser interactions. Numerical latency targets remain open; measure normal execution and recovery separately, and exclude remote job processing time from adapter overhead.
 - Identify compatibility gaps clearly, with evidence and their effect on the supported endpoint contract.
-- This stage is planning, not building or operating the target account.
+- Implementation is authorized. Target-account execution remains pending legitimate human login and an explicit test request; no authenticated pilot operation has been performed.
 
 ## Initial operating assumptions
 
@@ -38,25 +52,25 @@ Build a reusable engine that accepts an API specification, learns a website thro
 
 The browser host is configurable independently of the browser-control backend. Implement both a local session provider and an E2B session provider behind a shared lifecycle interface: create/connect, inspect health, provide human access, stage inputs, collect outputs, checkpoint/restore supported state, and close. Camofox versus direct Playwright remains a browser-backend evaluation; E2B is the selected host for server browser sessions.
 
-| Concern | Local testing | Server environment |
-| --- | --- | --- |
-| Browser worker | Dedicated browser on the test machine | Browser inside an E2B Desktop sandbox |
-| Session creation | Local provider; no E2B credentials required | E2B provider using the configured server-side API key and compatible template |
-| Human takeover | Existing visible browser window plus local control page | Authenticated interactive stream of the same sandbox browser, reached through the service control page |
-| Calling agents | Local MCP stdio bridge or CLI | Authenticated remote MCP/CLI service connection; a local stdio bridge may forward to it |
-| Durable state | Application data directory outside the browser profile | Persistent service storage outside the E2B sandbox |
+| Concern          | Local testing                                           | Server environment                                                                                     |
+| ---------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Browser worker   | Dedicated browser on the test machine                   | Browser inside an E2B Desktop sandbox                                                                  |
+| Session creation | Local provider; no E2B credentials required             | E2B provider using the configured server-side API key and compatible template                          |
+| Human takeover   | Existing visible browser window plus local control page | Authenticated interactive stream of the same sandbox browser, reached through the service control page |
+| Calling agents   | Local MCP stdio bridge or CLI                           | Authenticated remote MCP/CLI service connection; a local stdio bridge may forward to it                |
+| Durable state    | Application data directory outside the browser profile  | Persistent service storage outside the E2B sandbox                                                     |
 
-Proposed application configuration names (not implemented):
+Implemented application configuration names:
 
-| Setting | Purpose |
-| --- | --- |
-| `BROWSER_API_BROWSER_HOST=local` or `e2b` | Explicitly select the browser host. No silent fallback between providers. |
-| `E2B_API_KEY` | Required for E2B mode; injected into the service through an environment variable or server secret manager. Local mode does not require it. |
-| `BROWSER_API_E2B_TEMPLATE` | Select a pinned E2B Desktop template compatible with the chosen browser backend. |
-| `BROWSER_API_CONTROL_BASE_URL` | Human-accessible base URL: loopback for local testing, authenticated HTTPS control service for server use. |
-| `BROWSER_API_DATA_DIR` | Persistent application storage location for the initial SQLite/files design; use a durable volume in server deployments, outside E2B and preserved across service/container replacement. |
+| Setting                                   | Purpose                                                                                                                                                                                  |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BROWSER_API_BROWSER_HOST=local` or `e2b` | Explicitly select the browser host. No silent fallback between providers.                                                                                                                |
+| `E2B_API_KEY`                             | Required for E2B mode; injected into the service through an environment variable or server secret manager. Local mode does not require it.                                               |
+| `BROWSER_API_E2B_TEMPLATE`                | Select a pinned E2B Desktop template compatible with the chosen browser backend.                                                                                                         |
+| `BROWSER_API_CONTROL_BASE_URL`            | Human-accessible base URL: loopback for local testing, authenticated HTTPS control service for server use.                                                                               |
+| `BROWSER_API_DATA_DIR`                    | Persistent application storage location for the initial SQLite/files design; use a durable volume in server deployments, outside E2B and preserved across service/container replacement. |
 
-E2B documents `E2B_API_KEY` for its SDK and interactive desktop/window streaming with stream-specific authentication. Use those capabilities behind our provider and control-page interfaces. Source: [E2B Desktop setup and streaming](https://github.com/e2b-dev/desktop). The other configuration names above are our proposed application settings.
+E2B documents `E2B_API_KEY` for its SDK and interactive desktop/window streaming with stream-specific authentication. Use those capabilities behind our provider and control-page interfaces. Source: [E2B Desktop setup and streaming](https://github.com/e2b-dev/desktop). The other configuration names above are application settings implemented by this service.
 
 Read the E2B API key only in the service's provider integration; do not pass it to models, MCP tool arguments/results, CLI command-line arguments, browser pages, or site memory. Keep it out of logs and checked-in configuration. E2B credentials provision the environment; target-site login remains a separate human interaction in that environment's browser. Missing or invalid credentials, an unavailable template, or quota/capacity failures produce explicit provider errors. Do not substitute a local browser when E2B mode fails.
 
@@ -68,16 +82,16 @@ For server requests, transfer caller files to the service's artifact store, then
 
 Build local execution first, then validate E2B using the same supported pilot workflows and shared recipes. Required deployment acceptance checks include: local operation without an E2B key; E2B startup with configured credentials; clear failure with missing/invalid credentials; complete uploads/downloads; remote human login and takeover; repeated endpoint calls in one warm session; service/worker restart and expiry recovery; and concurrent callers sharing browser ownership without duplicate submission. A local-only implementation does not satisfy this deployment requirement. Pin and test the Camofox/E2B combination if Camofox is chosen.
 
-Both modes are planned requirements. No E2B credentials have been collected, and no sandbox or service has been provisioned.
+Both providers are implemented, but only local fixtures have been exercised. No E2B credential was available and no live E2B sandbox has been provisioned or validated.
 
 ## Selected pilot entry points
 
-| Pilot | API contract source | Browser entry point supplied by the user |
-| --- | --- | --- |
-| Powder | [Powder API overview](https://docs.powderfi.com/docs/getting-started) | [powderfi.com](https://powderfi.com) |
+| Pilot         | API contract source                                                                                                     | Browser entry point supplied by the user                                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Powder        | [Powder API overview](https://docs.powderfi.com/docs/getting-started)                                                   | [powderfi.com](https://powderfi.com)                                                                                                               |
 | Reducto Parse | [Parse overview](https://docs.reducto.ai/parse/overview), [OpenAPI specification](https://docs.reducto.ai/openapi.json) | [Reducto Studio pipeline](https://studio.reducto.ai/pipeline/k9770z5snrtw8frtdjq64xw86n8e0vc2?new=true&processor=kh7cdy5k1vztms38mp3erw7d7d8e1fef) |
 
-Use these as starting locations for authenticated discovery. The supplied Reducto pipeline/processor and Powder's post-login application route have not been inspected. API documents define the target contract; business operations use the browser UI. Snapshot and pin each available specification before validating compatibility. Reducto's OpenAPI URL is listed in its [documentation index](https://docs.reducto.ai/llms.txt); the complete schema has not yet been downloaded or validated.
+Use these as starting locations for authenticated discovery. The supplied Reducto pipeline/processor and Powder's post-login application route have not been inspected. API documents define the target contract; business operations use the browser UI. Snapshot and pin each available specification before validating compatibility. Reducto's OpenAPI URL is listed in its [documentation index](https://docs.reducto.ai/llms.txt); the complete schema has now been pinned and compiler-checked; the published `/parse` ambiguity is recorded in [pilot coverage](docs/PILOT-COVERAGE.md).
 
 ## Proposed architecture
 
@@ -101,13 +115,13 @@ Version recipes and record their verification evidence and applicable site/accou
 
 The execution service owns durable knowledge; an E2B worker is replaceable execution capacity. Learned knowledge must survive the destruction of the original sandbox, a new sandbox ID, a new model conversation, and a service restart. It does not depend on keeping an agent process or conversation alive.
 
-| State | Durable representation outside the sandbox | How a new run uses it |
-| --- | --- | --- |
-| Site knowledge and endpoint workflows | Versioned site map, semantic targets, input/output bindings, validated recipes, coverage gaps, and verification evidence | Retrieve the relevant verified recipe and nearby site context for the requested endpoint. |
-| Account and operation progress | Account-scoped identifiers, request keys, submission intent/receipts, job IDs, checkpoints, and handoff records | Recover the right entities and reconcile unfinished work before any repeat submission. |
-| Authentication state | Separately protected browser storage/profile exports where supported, scoped to the account and compatible backend | Attempt restoration, verify login, and request human login if the saved state expired or is incompatible. |
-| Inputs, outputs, and evidence | Complete files in durable artifact storage, addressed by stable IDs and digests | Stage inputs into the new worker and return previously committed results without depending on old sandbox paths. |
-| Live tabs, temporary element references, unsaved forms, and current observations | Ephemeral worker state; excluded from durable recipe identity | Reopen the relevant page and obtain fresh observations. Preserved runtime state may accelerate this only when verified. |
+| State                                                                            | Durable representation outside the sandbox                                                                               | How a new run uses it                                                                                                   |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Site knowledge and endpoint workflows                                            | Versioned site map, semantic targets, input/output bindings, validated recipes, coverage gaps, and verification evidence | Retrieve the relevant verified recipe and nearby site context for the requested endpoint.                               |
+| Account and operation progress                                                   | Account-scoped identifiers, request keys, submission intent/receipts, job IDs, checkpoints, and handoff records          | Recover the right entities and reconcile unfinished work before any repeat submission.                                  |
+| Authentication state                                                             | Separately protected browser storage/profile exports where supported, scoped to the account and compatible backend       | Attempt restoration, verify login, and request human login if the saved state expired or is incompatible.               |
+| Inputs, outputs, and evidence                                                    | Complete files in durable artifact storage, addressed by stable IDs and digests                                          | Stage inputs into the new worker and return previously committed results without depending on old sandbox paths.        |
+| Live tabs, temporary element references, unsaved forms, and current observations | Ephemeral worker state; excluded from durable recipe identity                                                            | Reopen the relevant page and obtain fresh observations. Preserved runtime state may accelerate this only when verified. |
 
 Commit validated learning incrementally as each workflow is established or repaired. Persist candidate changes separately from verified versions and promote a new recipe only after validation, using version checks to prevent stale updates. Save observation/evidence checkpoints as work progresses; a shutdown hook is not the persistence mechanism. An abrupt failure can lose the latest uncommitted observation, but must not erase committed knowledge.
 
@@ -155,16 +169,16 @@ MCP and CLI support are confirmed requirements. Expose the browser agent as a re
 
 The following names are proposed. Endpoint keys are stable identifiers from the pinned contract, using its operation ID when available or a normalized method/path key. Endpoint discovery reports input/output schemas, supported input ranges, coverage gaps, and verification status. Reject invalid inputs, unauthorized scope, and known applicable incompatibilities before business actions. An unexamined endpoint or parameter combination can trigger discovery inside execute_endpoint; absence of a recipe is not evidence of incompatibility. Registration still establishes the specification, site/account identity, and action scope. Optional onboarding can prelearn workflows, but is not required before a call.
 
-| Capability | Proposed MCP tools | Proposed CLI commands |
-| --- | --- | --- |
-| Register a site/specification and optionally prelearn within a declared scope | `onboard_site` | `browser-api sites onboard` |
-| Discover sites, endpoints, coverage, and schemas | `list_sites`, `list_endpoints`, `describe_endpoint` | `browser-api sites list`, `browser-api endpoints list`, `browser-api endpoints describe` |
-| Invoke an endpoint, learning an unknown workflow within the call when needed | `execute_endpoint` | `browser-api execute` |
-| Inspect or wait for durable work | `get_operation`, `wait_operation` | `browser-api operations get`, `browser-api operations wait` |
-| Retrieve the endpoint response | `get_result` | `browser-api results get` |
-| Resume after human assistance | `resume_operation` | `browser-api operations resume` |
-| Request cancellation with an explicit outcome | `cancel_operation` | `browser-api operations cancel` |
-| Register or upload inputs and retrieve complete artifacts | `register_artifact`, `upload_artifact`, `read_artifact` | `browser-api artifacts register`, `browser-api artifacts upload`, `browser-api artifacts get` |
+| Capability                                                                    | Proposed MCP tools                                      | Proposed CLI commands                                                                         |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Register a site/specification and optionally prelearn within a declared scope | `onboard_site`                                          | `browser-api sites onboard`                                                                   |
+| Discover sites, endpoints, coverage, and schemas                              | `list_sites`, `list_endpoints`, `describe_endpoint`     | `browser-api sites list`, `browser-api endpoints list`, `browser-api endpoints describe`      |
+| Invoke an endpoint, learning an unknown workflow within the call when needed  | `execute_endpoint`                                      | `browser-api execute`                                                                         |
+| Inspect or wait for durable work                                              | `get_operation`, `wait_operation`                       | `browser-api operations get`, `browser-api operations wait`                                   |
+| Retrieve the endpoint response                                                | `get_result`                                            | `browser-api results get`                                                                     |
+| Resume after human assistance                                                 | `resume_operation`                                      | `browser-api operations resume`                                                               |
+| Request cancellation with an explicit outcome                                 | `cancel_operation`                                      | `browser-api operations cancel`                                                               |
+| Register or upload inputs and retrieve complete artifacts                     | `register_artifact`, `upload_artifact`, `read_artifact` | `browser-api artifacts register`, `browser-api artifacts upload`, `browser-api artifacts get` |
 
 Use one generic endpoint invocation surface initially. Validate its path/query/body inputs against the endpoint schema returned by discovery. Site-specific tool wrappers may later be generated from verified contracts; they must use the same execution path and must not become handwritten site adapters.
 
@@ -234,10 +248,10 @@ Illustrative local handoff result; the port, identifiers, and path are examples,
 
 Delivery modes:
 
-| Mode | What the human opens and controls | Deployment requirement |
-| --- | --- | --- |
-| `local_window` — initial Mac prototype | The control page shows the task, reason, and controls to focus the existing visible worker browser and return ownership. The human interacts in that browser window; the dashboard does not claim to embed it. | Human and controlled browser are on the same machine. Implement and verify window/tab focusing for the selected backend. |
-| `streamed_browser` — required E2B server mode | The control page embeds an authenticated interactive view of the same sandbox browser, forwarding mouse/keyboard input while the human owns control. | E2B Desktop streaming and a reachable authenticated control service. Validate compatibility with the selected browser backend; Camofox's Mac desktop mode alone does not provide this stream. |
+| Mode                                          | What the human opens and controls                                                                                                                                                                              | Deployment requirement                                                                                                                                                                        |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `local_window` — initial Mac prototype        | The control page shows the task, reason, and controls to focus the existing visible worker browser and return ownership. The human interacts in that browser window; the dashboard does not claim to embed it. | Human and controlled browser are on the same machine. Implement and verify window/tab focusing for the selected backend.                                                                      |
+| `streamed_browser` — required E2B server mode | The control page embeds an authenticated interactive view of the same sandbox browser, forwarding mouse/keyboard input while the human owns control.                                                           | E2B Desktop streaming and a reachable authenticated control service. Validate compatibility with the selected browser backend; Camofox's Mac desktop mode alone does not provide this stream. |
 
 Camofox documents visible desktop mode for same-machine use and a separate noVNC path attached to its running Linux virtual display. These are backend capabilities to validate; our control page, routing, and ownership transitions still need implementation. Sources: [Camofox desktop mode](https://github.com/jo-inc/camofox-browser#interactive-desktop-browser), [Camofox VNC plugin](https://github.com/jo-inc/camofox-browser/blob/master/plugins/vnc/README.md).
 
@@ -279,11 +293,11 @@ This section adds interface requirements and proposed contracts to the plan. No 
 
 Powder's overview documents:
 
-| Endpoint | Documented purpose | UI mapping to investigate |
-| --- | --- | --- |
-| `POST /file_uploads` | Upload a document, optionally associated with a portfolio | Upload form, settings, portfolio selection, resulting upload identity |
-| `GET /file_uploads/{id}` | Retrieve processing status | Upload detail/status view and its state transitions |
-| `GET /file_uploads/{id}/data` | Retrieve processed structured data | Result views, pagination, and available exports |
+| Endpoint                      | Documented purpose                                        | UI mapping to investigate                                             |
+| ----------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
+| `POST /file_uploads`          | Upload a document, optionally associated with a portfolio | Upload form, settings, portfolio selection, resulting upload identity |
+| `GET /file_uploads/{id}`      | Retrieve processing status                                | Upload detail/status view and its state transitions                   |
+| `GET /file_uploads/{id}/data` | Retrieve processed structured data                        | Result views, pagination, and available exports                       |
 
 Source: [Powder API overview](https://docs.powderfi.com/docs/getting-started).
 
@@ -323,7 +337,7 @@ The objective is a reusable onboarding and execution mechanism with explicit sup
 
 Evaluate Camofox Browser as a candidate browser execution service alongside direct Playwright. Camofox wraps the Firefox-based Camoufox browser with an agent-facing REST API. Its documented capabilities include accessibility snapshots, element references, UI actions, screenshots, file uploads, and download retrieval. This REST interface controls browser UI operations; it does not authorize calls to the target site's private business APIs. Sources: [Camofox Browser](https://github.com/jo-inc/camofox-browser), [Camoufox Playwright compatibility](https://camoufox.com/python/usage/).
 
-The proposed layering is Astra Ultra and the Agents SDK → application memory and workflow runner → replaceable browser adapter → Camofox or direct Playwright. Browser selection does not replace the application harness, site learning, durable recipes, operation reconciliation, or API response validation. The Agents SDK remains a proposal. Discovery and deterministic execution share the adapter interface for observations, actions, uploads/downloads, session lifecycle, and exclusive human or agent ownership.
+The proposed layering is Astra Ultra and the Agents SDK → application memory and workflow runner → replaceable browser adapter → Camofox or direct Playwright. Browser selection does not replace the application harness, site learning, durable recipes, operation reconciliation, or API response validation. The initial implementation uses the Agents SDK. Discovery and deterministic execution share the adapter interface for observations, actions, uploads/downloads, session lifecycle, and exclusive human or agent ownership.
 
 Design constraints from the documentation and source review:
 
@@ -350,28 +364,28 @@ This evaluation currently consists of a documentation and source review. No Camo
 1. Confirm the initial endpoint subsets, obtain full contract snapshots, and identify the authenticated application routes from the supplied entry points.
 2. Select concrete test data and any optional account-scoped allowance for extra exploratory writes/jobs. The default boundary is settled: perform only the requested business effect; extra test actions require a separately configured allowance.
 3. Define remaining operation/job/handoff lifetimes, numerical latency targets, and detailed-event/heartbeat cadence. The 10-minute active-discovery default and continue-within-limits disconnect policy are settled. Validate detailed event delivery with one real caller, provisionally the current Codex desktop environment; exact client capabilities and transport are unverified. One account with queued browser interactions is the initial operating model.
-4. Confirm the proposed Agents SDK harness and other implementation choices below; choose the browser backend after the agreed Camofox/direct Playwright comparison.
+4. Complete the agreed Camofox/direct Playwright comparison. The initial implementation uses the Agents SDK and Playwright; this no longer blocks coding.
 5. Confirm Reducto's initial input modes/settings and whether the supplied Studio workspace is the dedicated test environment.
 6. Select correctness references, such as known test fixtures and representative API responses.
 7. Finalize MCP tool/CLI command names, supported MCP host versions, and control-envelope details. Validate local-window and E2B streamed-browser handoffs; choose their idle/expiry policy, pinned E2B template, and server control URL/authentication configuration. MCP, CLI, local testing, and E2B server support are confirmed requirements.
 8. Select durable server storage and define retention, deletion, and invalidation separately for verified knowledge, account/operation data, artifacts, and authentication state. Knowledge survival after sandbox deletion and service restart is required.
 
-## Proposed agent harness
+## Application agent harness
 
-Recommendation: use the OpenAI Agents SDK in TypeScript as the application's agent runtime. This is a proposal; no application harness has been implemented or selected as a final design decision.
+The initial application uses the OpenAI Agents SDK in TypeScript as its agent runtime. Application code owns the durable execution loop, browser actions, response validation, and human takeover. Read-only reviewers and the planner use the requested Astra model with maximum reasoning.
 
-The Codex desktop harness runs the development and planning session. The browser-agent application would run its own service using the Agents SDK. The SDK manages the agent loop, tool calls, sessions, tracing, and resumable approval flows; application code owns tools, persistence, and browser control. Source: [OpenAI Agents SDK](https://developers.openai.com/api/docs/guides/agents).
+The Codex desktop harness runs the development and planning session. The browser-agent application runs its own service using the Agents SDK. The SDK manages the agent loop, tool calls, sessions, tracing, and resumable approval flows; application code owns tools, persistence, and browser control. Source: [OpenAI Agents SDK](https://developers.openai.com/api/docs/guides/agents).
 
-| Responsibility | Proposed component |
-| --- | --- |
-| Broad discovery, interpreting unfamiliar pages, and recovery | Agents SDK with GPT-6 Astra (`gpt-6-astra`), maximum reasoning, and proactive subagent delegation |
-| Page observations, navigation, form actions, uploads, and downloads | Replaceable browser adapter; evaluate direct Playwright and Camofox, restricted to the agreed UI operations |
-| Browser host and session lifecycle | Required local testing and E2B server providers, selected through configuration |
-| Fast execution of verified endpoint workflows | Deterministic recipe runner with input validation, state checks, and result verification |
+| Responsibility                                                            | Proposed component                                                                                                              |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Broad discovery, interpreting unfamiliar pages, and recovery              | Agents SDK with GPT-6 Astra (`gpt-6-astra`), maximum reasoning, and proactive subagent delegation                               |
+| Page observations, navigation, form actions, uploads, and downloads       | Replaceable browser adapter; evaluate direct Playwright and Camofox, restricted to the agreed UI operations                     |
+| Browser host and session lifecycle                                        | Required local testing and E2B server providers, selected through configuration                                                 |
+| Fast execution of verified endpoint workflows                             | Deterministic recipe runner with input validation, state checks, and result verification                                        |
 | Site knowledge, recipe versions, account mappings, and operation receipts | Persistent application storage outside browser workers, initially SQLite and versioned recipe files on a durable service volume |
-| Human login, specific help requests, browser takeover, and resumption | Application control interface with exclusive browser ownership |
-| API response mapping and contract checks | Application code driven by the pinned API specification |
-| Access by other agents | MCP server and CLI over the same execution service; HTTP compatibility facade remains proposed |
+| Human login, specific help requests, browser takeover, and resumption     | Application control interface with exclusive browser ownership                                                                  |
+| API response mapping and contract checks                                  | Application code driven by the pinned API specification                                                                         |
+| Access by other agents                                                    | MCP server and CLI over the same execution service; HTTP compatibility facade remains proposed                                  |
 
 The SDK's approval features do not implement browser takeover by themselves. Build the pause, transfer of browser control, state reconciliation, and resume behavior explicitly. Run established recipes without a model decision for every browser action; invoke the agent when discovery or recovery is needed. The LLM is GPT-6 Astra (`gpt-6-astra`), explicitly selected by the user. Configure that model identifier explicitly for all agent reasoning roles; require an explicit change of model choice before substituting another model. Verify API access during implementation. The requested operating mode is Astra Ultra; the proposed SDK implementation is detailed below. Source: [GPT-6 Astra model documentation](https://developers.openai.com/api/docs/models/gpt-6-astra).
 
@@ -379,22 +393,22 @@ The SDK's approval features do not implement browser takeover by themselves. Bui
 
 The user's requested mode is Astra Ultra. OpenAI describes Ultra as maximum reasoning with automatic delegation of suitable independent work to subagents. Source: [OpenAI model modes](https://learn.chatgpt.com/docs/models).
 
-For the proposed Agents SDK runtime, implement this pattern with `model: "gpt-6-astra"`, Responses API `reasoning.effort: "max"`, and proactive subagent orchestration. The public Astra API documents efforts through `max`; `ultra` is a Codex/ChatGPT mode and must not be sent as an unsupported API effort value. This is an application implementation of the documented Ultra pattern; identical behavior to the Codex runtime has not been established. Source: [Astra API model documentation](https://developers.openai.com/api/docs/models/gpt-6-astra).
+The Agents SDK runtime implements this pattern with `model: "gpt-6-astra"`, Responses API `reasoning.effort: "max"`, and proactive subagent orchestration. The public Astra API documents efforts through `max`; `ultra` is a Codex/ChatGPT mode and must not be sent as an unsupported API effort value. This is an application implementation of the documented Ultra pattern; identical behavior to the Codex runtime has not been established. Source: [Astra API model documentation](https://developers.openai.com/api/docs/models/gpt-6-astra).
 
 Use Astra with maximum reasoning for the coordinator and its reasoning subagents. Delegate bounded, independent tasks when they improve speed or quality, such as contract analysis or checking captured observations. Keep browser interactions under exclusive ownership and queue them for the single account; subagents do not gain simultaneous control of the browser. Established recipes retain their deterministic fast path.
 
 ## Proposed implementation starting point
 
 - Shared TypeScript execution service with the confirmed MCP and CLI interfaces above, plus a proposed HTTP compatibility facade derived from the supplied API contract. Support local execution and E2B browser workers from the same service code.
-- OpenAI Agents SDK as the proposed discovery and recovery harness, connected to the browser tools and application state described above.
+- OpenAI Agents SDK as the implemented discovery and recovery harness, connected to the browser tools and application state described above.
 - A replaceable browser adapter, comparing direct Playwright with Camofox before backend selection. Keep semantic target resolution and state assertions in the shared workflow contract. For the Playwright baseline, use [locators](https://playwright.dev/docs/locators) and [auto-waiting](https://playwright.dev/docs/actionability).
 - A constrained workflow format interpreted by the browser runner, so recipes can be inspected, versioned, validated, and repaired.
 - Required local and E2B session providers with explicit deployment configuration, server-side E2B credentials, compatible browser templates, and live human handoff in both modes.
 - SQLite and versioned recipe files as an initial single-service storage choice on persistent local or server storage outside the E2B sandbox. Preserve the site map, workflow metadata, account-scoped identifiers, operation/handoff state, and complete artifacts across worker replacement.
-- Astra Ultra as specified above: GPT-6 Astra (`gpt-6-astra`), maximum API reasoning, and proactive subagent orchestration for LLM-powered discovery, workflow learning, and recovery. The harness recommendation remains distinct from this confirmed model and operating-mode choice.
+- Astra Ultra as specified above: GPT-6 Astra (`gpt-6-astra`), maximum API reasoning, and proactive subagent orchestration for LLM-powered discovery, workflow learning, and recovery. The implemented harness remains distinct from the confirmed model and operating-mode choice.
 - A control interface for human login, coverage review, and operations requiring attention: local browser-window handoff for testing, authenticated E2B browser streaming for server deployments. Preserve the supplied endpoint's response contract on the API interface.
-- Initially serialize browser interactions for one test account. Interleave short job-status checks with other work rather than holding browser ownership while a remote job processes.
+- Serialize browser interactions and retain each unfinished operation's account page. The worker can serve independent accounts during job waits. Same-account interleaving requires future job correlation or per-operation tabs.
 
-GPT-6 Astra, the requested Ultra operating mode, the initial one-account operating model, MCP/CLI access for other agents, and both local testing and E2B server deployment support are agreed. Other technology choices, including the Agents SDK harness, remain proposals; numerical performance targets remain open.
+GPT-6 Astra, the requested Ultra operating mode, the initial one-account operating model, MCP/CLI access for other agents, and both local testing and E2B server deployment support are agreed. The initial technology choices are implemented; broader deployment and pilot acceptance remain pending, and numerical performance targets remain open.
 
-Next planning discussion: continue the user-requested grill-me rounds with the remaining public-interface, new-site registration, and correctness-evidence decisions. Disconnect continuation within scope, a configurable 10-minute active-discovery budget, and testing one real caller first are settled. Keep provisional client and transport choices distinct from confirmed user requirements, and resolve pilot contracts, test data, and measurable acceptance criteria before implementation.
+Next acceptance work: run the implemented caller loop against a legitimate test-account workflow, verify its output and recovery behavior, then exercise the same flow in a pinned E2B environment. Disconnect continuation, detailed durable progress, and the configurable 10-minute discovery budget are implemented; broader pilot support is not yet certified.

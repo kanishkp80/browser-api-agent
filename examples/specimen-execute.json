@@ -1,0 +1,13 @@
+{
+  "request_id": "example-parse-001",
+  "site_id": "specimen-docs",
+  "endpoint": "parseDocument",
+  "input": {
+    "body": {
+      "document": {
+        "artifact_id": "artifact_replace_with_registered_id"
+      },
+      "page_range": "1-3"
+    }
+  }
+}
