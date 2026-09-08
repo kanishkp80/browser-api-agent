@@ -11,6 +11,7 @@ Build a reusable engine that accepts an API specification, learns a website thro
 - Browser operations may use page content, DOM/accessibility, forms, uploads, and downloads.
 - Business operations must go through the UI. Replaying authenticated network requests is outside the agreed scope.
 - The first prototype runs locally with a dedicated browser profile.
+- Use OpenAI GPT-6 Astra (`gpt-6-astra`) in Astra Ultra mode for discovery, workflow learning, unfamiliar-page reasoning, and recovery. The user has confirmed maximum reasoning with proactive delegation of useful independent work to subagents.
 - Target exact behavior for a declared supported endpoint subset, with explicit coverage gaps.
 - A dedicated test account will be available to exercise writes and jobs on test data during the implementation and validation phase.
 - Human participation establishes or renews login. Proposed implementation: the user signs in directly in the controlled browser; credentials never enter prompts or learned site memory.
@@ -130,14 +131,22 @@ The Codex desktop harness runs the development and planning session. The browser
 
 | Responsibility | Proposed component |
 | --- | --- |
-| Broad discovery, interpreting unfamiliar pages, and recovery | Agents SDK with the selected reasoning model |
+| Broad discovery, interpreting unfamiliar pages, and recovery | Agents SDK with GPT-6 Astra (`gpt-6-astra`), maximum reasoning, and proactive subagent delegation |
 | Page observations, navigation, form actions, uploads, and downloads | Playwright tools restricted to the agreed UI operations |
 | Fast execution of verified endpoint workflows | Deterministic recipe runner with input validation, state checks, and result verification |
 | Site knowledge, recipe versions, account mappings, and operation receipts | Persistent application storage, initially SQLite and versioned recipe files |
 | Human login, specific help requests, browser takeover, and resumption | Application control interface with exclusive browser ownership |
 | API response mapping and contract checks | Application code driven by the pinned API specification |
 
-The SDK's approval features do not implement browser takeover by themselves. Build the pause, transfer of browser control, state reconciliation, and resume behavior explicitly. Run established recipes without a model decision for every browser action; invoke the agent when discovery or recovery is needed. Model choice remains open.
+The SDK's approval features do not implement browser takeover by themselves. Build the pause, transfer of browser control, state reconciliation, and resume behavior explicitly. Run established recipes without a model decision for every browser action; invoke the agent when discovery or recovery is needed. The LLM is GPT-6 Astra (`gpt-6-astra`), explicitly selected by the user. Configure that model identifier explicitly for all agent reasoning roles; require an explicit change of model choice before substituting another model. Verify API access during implementation. The requested operating mode is Astra Ultra; the proposed SDK implementation is detailed below. Source: [GPT-6 Astra model documentation](https://developers.openai.com/api/docs/models/gpt-6-astra).
+
+### Astra Ultra operating mode
+
+The user's requested mode is Astra Ultra. OpenAI describes Ultra as maximum reasoning with automatic delegation of suitable independent work to subagents. Source: [OpenAI model modes](https://learn.chatgpt.com/docs/models).
+
+For the proposed Agents SDK runtime, implement this pattern with `model: "gpt-6-astra"`, Responses API `reasoning.effort: "max"`, and proactive subagent orchestration. The public Astra API documents efforts through `max`; `ultra` is a Codex/ChatGPT mode and must not be sent as an unsupported API effort value. This is an application implementation of the documented Ultra pattern; identical behavior to the Codex runtime has not been established. Source: [Astra API model documentation](https://developers.openai.com/api/docs/models/gpt-6-astra).
+
+Use Astra with maximum reasoning for the coordinator and its reasoning subagents. Delegate bounded, independent tasks when they improve speed or quality, such as contract analysis or checking captured observations. Keep browser interactions under exclusive ownership and queue them for the single account; subagents do not gain simultaneous control of the browser. Established recipes retain their deterministic fast path.
 
 ## Proposed implementation starting point
 
@@ -146,10 +155,10 @@ The SDK's approval features do not implement browser takeover by themselves. Bui
 - Playwright for browser control, with semantic locators and built-in actionability waits. See [locators](https://playwright.dev/docs/locators) and [auto-waiting](https://playwright.dev/docs/actionability).
 - A constrained workflow format interpreted by the browser runner, so recipes can be inspected, versioned, validated, and repaired.
 - SQLite for the local site map, workflow metadata, account-scoped identifiers, and durable operation state; versioned recipe files for review.
-- A reasoning-model interface used for discovery and recovery. Model selection remains open; the OpenAI Agents SDK recommendation is not a final model choice.
+- Astra Ultra as specified above: GPT-6 Astra (`gpt-6-astra`), maximum API reasoning, and proactive subagent orchestration for LLM-powered discovery, workflow learning, and recovery. The harness recommendation remains distinct from this confirmed model and operating-mode choice.
 - A separate local control interface for human login, coverage review, and operations requiring attention. Preserve the supplied endpoint's response contract on the API interface.
 - Initially serialize browser interactions for one test account. Interleave short job-status checks with other work rather than holding browser ownership while a remote job processes.
 
-These technology choices are proposals. The initial one-account operating model is agreed; numerical performance targets remain open.
+GPT-6 Astra, the requested Ultra operating mode, and the initial one-account operating model are agreed. Other technology choices, including the Agents SDK harness, remain proposals; numerical performance targets remain open.
 
 Next planning discussion: confirm the harness and caller interface, then settle the first milestone's contract, test data, and measurable acceptance criteria before implementation.
