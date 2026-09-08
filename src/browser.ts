@@ -13,6 +13,15 @@ import {
 } from "playwright";
 
 import { AppError } from "./errors.js";
+import { createE2BDownloadHandler } from "./e2b-download.js";
+import {
+  E2B_CDP_RELAY_PORT,
+  E2B_CDP_RELAY_SCRIPT_PATH,
+  E2B_CDP_RELAY_SECRET_PATH,
+  E2B_CDP_RELAY_SOURCE,
+  generateE2BCdpRelaySecret,
+  e2bCdpRelayAuthorization,
+} from "./e2b-relay.js";
 import type {
   AppConfig,
   BrowserAction,
@@ -30,6 +39,7 @@ const E2B_CDP_PORT = 9222;
 
 type SessionCleanup = () => Promise<void>;
 type PlaywrightRole = Parameters<Page["getByRole"]>[0];
+type DownloadReader = typeof readDownload;
 
 function scopedProfileKey(site: Site): string {
   return createHash("sha256")
@@ -372,6 +382,7 @@ class PlaywrightBrowserSession implements BrowserSession {
     private readonly releaseAccess: () => Promise<void>,
     private readonly cleanup: SessionCleanup,
     private readonly probe?: () => Promise<boolean>,
+    private readonly downloadReader: DownloadReader = readDownload,
   ) {
     this.id = id;
     this.presentation = presentation;
@@ -687,7 +698,7 @@ class PlaywrightBrowserSession implements BrowserSession {
             "download",
             true,
           );
-          const result = await readDownload(
+          const result = await this.downloadReader(
             this.page,
             locator,
             this.config.actionTimeoutMs,
@@ -858,12 +869,17 @@ class E2BBrowserProvider extends ManagedProvider {
 
     let sandbox: DesktopSandbox | undefined;
     let browser: Browser | undefined;
+    let downloads:
+      Awaited<ReturnType<typeof createE2BDownloadHandler>> | undefined;
     let keepalive: NodeJS.Timeout | undefined;
     try {
       sandbox = await DesktopSandbox.create(this.config.e2bTemplate, {
         apiKey: this.config.e2bApiKey,
         secure: true,
-        timeoutMs: 3_600_000,
+        // noVNC is browser-accessible and authenticates its own short-lived
+        // sessions. CDP is loopback-only behind a separate authenticated relay.
+        network: { allowPublicTraffic: true },
+        timeoutMs: 180_000,
       });
       const keepaliveMs = Math.max(
         30_000,
@@ -877,16 +893,39 @@ class E2BBrowserProvider extends ManagedProvider {
 
       const profile = `/home/user/.browser-api/profiles/${scopedProfileKey(site)}`;
       await sandbox.commands.run(`mkdir -p ${profile}`);
-      await sandbox.commands.run(
-        `google-chrome --no-first-run --no-default-browser-check --disable-dev-shm-usage --remote-debugging-address=0.0.0.0 --remote-debugging-port=${E2B_CDP_PORT} --user-data-dir=${profile} about:blank`,
-        { background: true, envs: { DISPLAY: sandbox.display } },
+      const chromeProcess = await sandbox.commands.run(
+        `google-chrome --no-first-run --no-default-browser-check --disable-dev-shm-usage --remote-debugging-address=127.0.0.1 --remote-debugging-port=${E2B_CDP_PORT} --user-data-dir=${profile} about:blank`,
+        { background: true, timeoutMs: 0, envs: { DISPLAY: sandbox.display } },
       );
-      const ready = await sandbox.waitAndVerify(
-        `curl --fail --silent http://127.0.0.1:${E2B_CDP_PORT}/json/version`,
-        (result) => result.exitCode === 0,
-        this.config.actionTimeoutMs,
-        250,
-      );
+      await chromeProcess.disconnect();
+      // SDK waitAndVerify uses seconds and retries command failures without
+      // advancing its elapsed counter. Use a wall-clock deadline instead.
+      const deadline = performance.now() + this.config.actionTimeoutMs;
+      let ready = false;
+      while (performance.now() < deadline) {
+        const remaining = Math.max(1, Math.ceil(deadline - performance.now()));
+        try {
+          const probe = await sandbox.commands.run(
+            `curl --fail --silent --max-time 2 http://127.0.0.1:${E2B_CDP_PORT}/json/version`,
+            {
+              timeoutMs: Math.min(2_500, remaining),
+              requestTimeoutMs: Math.min(3_000, remaining),
+            },
+          );
+          if (probe.exitCode === 0) {
+            ready = true;
+            break;
+          }
+        } catch {
+          // Chrome may still be starting; all retries share the same deadline.
+        }
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(250, Math.max(0, deadline - performance.now())),
+          ),
+        );
+      }
       if (!ready) {
         throw new AppError(
           "e2b_browser_capability_unavailable",
@@ -895,16 +934,100 @@ class E2BBrowserProvider extends ManagedProvider {
         );
       }
 
-      const headers = sandbox.trafficAccessToken
-        ? { "X-Access-Token": sandbox.trafficAccessToken }
-        : undefined;
-      browser = await chromium.connectOverCDP(
-        `https://${sandbox.getHost(E2B_CDP_PORT)}`,
-        {
-          headers,
-          timeout: this.config.actionTimeoutMs,
-        },
+      const rawEndpoint = `https://${sandbox.getHost(E2B_CDP_PORT)}/json/version`;
+      const rawResponse = await fetch(rawEndpoint, {
+        signal: AbortSignal.timeout(this.config.actionTimeoutMs),
+        redirect: "manual",
+      });
+      if (rawResponse.ok)
+        throw new AppError(
+          "e2b_cdp_exposed",
+          "The template exposes unauthenticated Chrome control; refusing this sandbox",
+          502,
+        );
+      await rawResponse.body?.cancel();
+      const relaySecret = generateE2BCdpRelaySecret();
+      await sandbox.files.write(
+        E2B_CDP_RELAY_SCRIPT_PATH,
+        E2B_CDP_RELAY_SOURCE,
       );
+      await sandbox.files.write(E2B_CDP_RELAY_SECRET_PATH, relaySecret);
+      await sandbox.commands.run(
+        `chmod 700 ${E2B_CDP_RELAY_SCRIPT_PATH} && chmod 600 ${E2B_CDP_RELAY_SECRET_PATH}`,
+      );
+      const relay = await sandbox.commands.run(
+        `python3 ${E2B_CDP_RELAY_SCRIPT_PATH} --listen 0.0.0.0 --port ${E2B_CDP_RELAY_PORT} --upstream-port ${E2B_CDP_PORT} --secret-file ${E2B_CDP_RELAY_SECRET_PATH}`,
+        { background: true, timeoutMs: 0 },
+      );
+      await relay.disconnect();
+      const headers = { Authorization: e2bCdpRelayAuthorization(relaySecret) };
+      const endpoint = new URL(
+        `https://${sandbox.getHost(E2B_CDP_RELAY_PORT)}`,
+      );
+      const relayDeadline = performance.now() + this.config.actionTimeoutMs;
+      let versionResponse: Response | undefined;
+      let relayStatus: number | undefined;
+      while (performance.now() < relayDeadline) {
+        try {
+          const response = await fetch(new URL("/json/version", endpoint), {
+            headers,
+            redirect: "error",
+            signal: AbortSignal.timeout(
+              Math.max(
+                1,
+                Math.min(3_000, Math.ceil(relayDeadline - performance.now())),
+              ),
+            ),
+          });
+          relayStatus = response.status;
+          if (response.ok) {
+            versionResponse = response;
+            break;
+          }
+          await response.body?.cancel();
+          if (response.status === 401 || response.status === 403) break;
+        } catch {
+          // Python startup and ingress port discovery can briefly lag Chrome.
+        }
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(250, Math.max(0, relayDeadline - performance.now())),
+          ),
+        );
+      }
+      if (!versionResponse)
+        throw new AppError(
+          "e2b_cdp_unreachable",
+          `E2B Chrome discovery endpoint was not ready before its deadline${relayStatus ? ` (HTTP ${relayStatus})` : ""}`,
+          502,
+        );
+      const version = (await versionResponse.json()) as {
+        webSocketDebuggerUrl?: string;
+      };
+      if (!version.webSocketDebuggerUrl)
+        throw new AppError(
+          "e2b_cdp_invalid_response",
+          "E2B Chrome did not provide a debugger connection path",
+          502,
+        );
+      const reported = new URL(version.webSocketDebuggerUrl);
+      if (
+        !/^\/devtools\/browser\/[a-f0-9-]+$/i.test(reported.pathname) ||
+        reported.search ||
+        reported.hash
+      )
+        throw new AppError(
+          "e2b_cdp_invalid_response",
+          "E2B Chrome returned an unexpected debugger path",
+          502,
+        );
+      const websocket = new URL(reported.pathname, endpoint);
+      websocket.protocol = "wss:";
+      browser = await chromium.connectOverCDP(websocket.href, {
+        headers,
+        timeout: this.config.actionTimeoutMs,
+      });
       const context = browser.contexts()[0];
       if (!context) {
         throw new AppError(
@@ -914,7 +1037,18 @@ class E2BBrowserProvider extends ManagedProvider {
         );
       }
       const page = context.pages().at(-1) ?? (await context.newPage());
+      // Keep Playwright's default event subscription so its page-scoped
+      // download event can corroborate the CDP event. Replace its local
+      // download path before navigating or performing any page action.
+      downloads = await createE2BDownloadHandler(browser, sandbox);
+      const ownedDownloads = downloads;
       let streamStarted = false;
+      let streamTask: Promise<unknown> = Promise.resolve();
+      const serializeStream = <T>(task: () => Promise<T>): Promise<T> => {
+        const result = streamTask.then(task);
+        streamTask = result.catch(() => undefined);
+        return result;
+      };
       let session!: PlaywrightBrowserSession;
       const ownedSandbox = sandbox;
       const ownedBrowser = browser;
@@ -925,33 +1059,61 @@ class E2BBrowserProvider extends ManagedProvider {
         page,
         origins,
         "streamed_browser",
-        async () => {
-          await page.bringToFront();
-          if (!streamStarted) {
-            await ownedSandbox.stream.start({ requireAuth: true });
-            streamStarted = true;
-          }
-          const authKey = ownedSandbox.stream.getAuthKey();
-          return {
-            presentation: "streamed_browser",
-            url: ownedSandbox.stream.getUrl({
-              authKey,
-              autoConnect: true,
-              viewOnly: false,
-              resize: "scale",
-            }),
-          };
-        },
-        async () => {
-          if (!streamStarted) return;
-          await ownedSandbox.stream.stop();
-          streamStarted = false;
-        },
+        () =>
+          serializeStream(async () => {
+            await page.bringToFront();
+            if (!streamStarted) {
+              let deadline: NodeJS.Timeout | undefined;
+              try {
+                await Promise.race([
+                  ownedSandbox.stream.start({ requireAuth: true }),
+                  new Promise<never>((_resolve, reject) => {
+                    deadline = setTimeout(
+                      () =>
+                        reject(
+                          new AppError(
+                            "e2b_stream_timeout",
+                            "Interactive desktop startup exceeded its deadline",
+                            504,
+                          ),
+                        ),
+                      this.config.actionTimeoutMs,
+                    );
+                  }),
+                ]);
+                streamStarted = true;
+              } catch (error) {
+                // Killing the owned sandbox also interrupts the SDK's unbounded
+                // readiness retry loop if stream startup fails or times out.
+                await ownedSandbox.kill().catch(() => undefined);
+                throw error;
+              } finally {
+                if (deadline) clearTimeout(deadline);
+              }
+            }
+            const authKey = ownedSandbox.stream.getAuthKey();
+            return {
+              presentation: "streamed_browser" as const,
+              url: ownedSandbox.stream.getUrl({
+                authKey,
+                autoConnect: true,
+                viewOnly: false,
+                resize: "scale",
+              }),
+            };
+          }),
+        () =>
+          serializeStream(async () => {
+            if (!streamStarted) return;
+            await ownedSandbox.stream.stop();
+            streamStarted = false;
+          }),
         async () => {
           this.sessions.delete(session);
           if (keepalive) clearInterval(keepalive);
           if (streamStarted)
             await ownedSandbox.stream.stop().catch(() => undefined);
+          await ownedDownloads.close().catch(() => undefined);
           await ownedBrowser.close().catch(() => undefined);
           await ownedSandbox.kill().catch(() => undefined);
         },
@@ -964,12 +1126,15 @@ class E2BBrowserProvider extends ManagedProvider {
             ),
           });
         },
+        ownedDownloads.download,
       );
       await session.initialize();
       await session.act({ kind: "navigate", url: site.base_url });
+      await sandbox.setTimeout(3_600_000);
       return this.track(session);
     } catch (error) {
       if (keepalive) clearInterval(keepalive);
+      await downloads?.close().catch(() => undefined);
       await browser?.close().catch(() => undefined);
       await sandbox?.kill().catch(() => undefined);
       if (error instanceof AppError) throw error;

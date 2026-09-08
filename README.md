@@ -2,7 +2,7 @@
 
 A TypeScript service that learns browser workflows during endpoint calls, keeps callers informed, and reuses observed workflows across later calls and service restarts. Browser operations use the UI; the model has no target-API, shell, or arbitrary JavaScript tool.
 
-This is an initial implementation. Real Chromium, durable recovery, and MCP/CLI integration are tested against local fixtures. Powder/Reducto parity and live E2B operation remain unverified.
+This is an initial implementation. Real Chromium, durable recovery, and MCP/CLI integration are tested against local fixtures. The live E2B infrastructure smoke also passes. Powder/Reducto API parity remains unverified.
 
 ## Run locally
 
@@ -80,13 +80,21 @@ BROWSER_API_CONTROL_BASE_URL=https://your-control-service.example
 BROWSER_API_SERVICE_TOKEN=<at least 32 non-whitespace characters>
 ```
 
-The template must provide a compatible Linux desktop and `google-chrome`, with Playwright CDP access to the same browser shown by the desktop stream. The provider provisions the sandbox, protects its exposed traffic, renews its lifetime, and tears it down when closed. Uploads transfer bytes with original filenames/MIME types. Knowledge, operations, and complete artifacts remain on the service volume.
+The template must provide a compatible Linux desktop, `google-chrome`, Python 3, and `curl`, with Playwright CDP access to the same browser shown by the desktop stream. Chrome binds to loopback; an ephemeral bearer-authenticated relay carries browser control over TLS. Human desktop streaming uses separate session authentication. The provider renews the sandbox lifetime and tears it down when closed. Uploads transfer bytes with original filenames/MIME types. Knowledge, operations, and complete artifacts remain on the service volume.
 
-There is no silent local fallback. No E2B credential was available during this implementation, so this provider needs live acceptance testing. A new E2B sandbox currently requires fresh human login; browser authentication export/restore is not implemented. E2B replacement does not discard committed knowledge or operation evidence.
+Run the live E2B infrastructure smoke with a server-side key in `.env` or the process environment:
+
+```sh
+npm run smoke:e2b
+```
+
+Use `BROWSER_API_ENV_FILE` for a different environment file and `BROWSER_API_E2B_TEMPLATE` to select a template; the smoke defaults to `desktop`. It provisions a temporary sandbox, exercises a synthetic UI with upload/download, checks authenticated desktop streaming and return of control, and deletes its sandbox. It emits NDJSON progress and saves a desktop screenshot under `test-results/e2b-smoke/`. This test consumes E2B runtime and requires local Playwright Chromium for the stream viewer. It does not call Astra or a business website.
+
+There is no silent local fallback. A live smoke against the E2B `desktop` template passed on 2026-09-08, including streamed keyboard input and return to the same automated browser. Production template pinning, expiry/replacement recovery, and pilot acceptance remain pending. A new E2B sandbox currently requires fresh human login; browser authentication export/restore is not implemented. E2B replacement does not discard committed knowledge or operation evidence.
 
 ## Verification
 
-The final local check passed TypeScript validation, 79 tests, and the build. See [validation evidence and live-test limits](docs/VALIDATION.md).
+The final local check passed TypeScript validation, 87 tests, and the build. See [validation evidence and live-test limits](docs/VALIDATION.md).
 
 ```sh
 npm run check

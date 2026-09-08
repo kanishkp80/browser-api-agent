@@ -1,6 +1,6 @@
 # Browser API agent — working plan
 
-Status: first implementation and local validation in progress. Public pilot contracts are pinned. Authenticated Powder/Reducto workflows and live E2B deployment have not been validated.
+Status: first implementation and local validation in progress. Public pilot contracts are pinned. A live E2B infrastructure smoke passes; authenticated Powder/Reducto workflows and production deployment acceptance remain pending.
 
 Working directory: `/Users/kanishkp/workspace/browser-api-agent`. This `PLAN.md` is the maintained working plan; PDF exports are dated snapshots.
 
@@ -14,9 +14,11 @@ The service uses one durable SQLite/files volume outside E2B. A job retains its 
 
 Correctness boundaries: checkpoint interactive actions before dispatch; treat arbitrary button clicks as submission boundaries; reconcile interrupted actions instead of retrying them; persist human submission outcomes before releasing control; require exclusive claim tokens; and label schema-valid workflows `observed`. Pilot API parity needs stronger semantic evidence than a matching JSON schema.
 
-Validation includes a real local Chromium UI, uploaded file bytes, a complete captured response, a different input after service restart, real MCP SDK clients, and a CLI subprocess. Opt-in live tests exercise the actual Astra model. Detailed validation results and runtime instructions live in [README.md](README.md); pilot source hashes and contract gaps live in [docs/PILOT-COVERAGE.md](docs/PILOT-COVERAGE.md).
+A live E2B `desktop` smoke passed on 2026-09-08: UI fill/upload/result/download, authenticated noVNC streaming, keyboard input through the stream, return to the same automated browser, protected CDP ingress, and complete sandbox cleanup. `npm run smoke:e2b` reproduces this infrastructure check with synthetic data. It does not establish live Astra-to-pilot parity.
 
-Remaining acceptance work: legitimate pilot login and test fixtures, exact response/postcondition evidence, Reducto's published schema ambiguity and input dependency, a pinned E2B template/key with live takeover/recovery validation, Camofox comparison, and a real calling-agent integration. New E2B sandboxes currently require fresh human login; protected authentication export/restore remains unimplemented. General per-field response aggregation, multiple business submissions in one workflow, retention policy, and multi-service deployment also remain outside this first slice.
+Validation also includes a real local Chromium UI, uploaded file bytes, a complete captured response, a different input after service restart, real MCP SDK clients, and a CLI subprocess. Opt-in live tests exercise the actual Astra model. Detailed validation results and runtime instructions live in [README.md](README.md); pilot source hashes and contract gaps live in [docs/PILOT-COVERAGE.md](docs/PILOT-COVERAGE.md).
+
+Remaining acceptance work: legitimate pilot login and test fixtures, exact response/postcondition evidence, Reducto's published schema ambiguity and input dependency, production E2B template pinning and expiry/replacement recovery validation, Camofox comparison, and a real calling-agent integration. New E2B sandboxes currently require fresh human login; protected authentication export/restore remains unimplemented. General per-field response aggregation, multiple business submissions in one workflow, retention policy, and multi-service deployment also remain outside this first slice.
 
 ## Goal and agreed decisions
 

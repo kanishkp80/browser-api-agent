@@ -18,6 +18,7 @@
     "start": "node dist/main.js",
     "cli": "tsx src/cli.ts",
     "check": "npm run typecheck && npm test && npm run build",
+    "smoke:e2b": "node --import tsx scripts/smoke-e2b.mjs",
     "format": "prettier --write src test docs examples/demo-site.ts README.md PLAN.md package.json tsconfig.json",
     "demo:site": "tsx examples/demo-site.ts"
   },
