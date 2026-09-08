@@ -11,6 +11,7 @@ Build a reusable engine that accepts an API specification, learns a website thro
 - Browser operations may use page content, DOM/accessibility, forms, uploads, and downloads.
 - Business operations must go through the UI. Replaying authenticated network requests is outside the agreed scope.
 - The first prototype runs locally with a dedicated browser profile.
+- Evaluate Camofox Browser alongside direct Playwright behind a replaceable browser adapter. This comparison is agreed; the backend is not yet selected or installed.
 - Use OpenAI GPT-6 Astra (`gpt-6-astra`) in Astra Ultra mode for discovery, workflow learning, unfamiliar-page reasoning, and recovery. The user has confirmed maximum reasoning with proactive delegation of useful independent work to subagents.
 - Target exact behavior for a declared supported endpoint subset, with explicit coverage gaps.
 - A dedicated test account will be available to exercise writes and jobs on test data during the implementation and validation phase.
@@ -20,6 +21,14 @@ Build a reusable engine that accepts an API specification, learns a website thro
 - Start with one account and queued browser interactions. Numerical latency targets remain open; measure normal execution and recovery separately, and exclude remote job processing time from adapter overhead.
 - Identify compatibility gaps clearly, with evidence and their effect on the supported endpoint contract.
 - This stage is planning, not building or operating the target account.
+
+## Initial operating assumptions
+
+- Assume both pilot sites allow headless browser automation without blocking it.
+- Assume there are no CAPTCHA challenges in the target workflows.
+- Treat these as prototype assumptions, not verified claims about either site. CAPTCHA handling and mitigation of headless-browser blocking are outside the initial scope.
+- Human login, session renewal, and browser takeover for specific help remain required. The browser-control design must support a user-visible handoff even when routine execution runs headlessly.
+- If either assumption proves false, report the observed mismatch and revisit scope before continuing the affected workflow.
 
 ## Selected pilot entry points
 
@@ -112,12 +121,38 @@ Proposed adaptation acceptance test:
 
 The objective is a reusable onboarding and execution mechanism with explicit supported coverage. Powder and Reducto test adaptation across two vendors' document-processing interfaces, settings, and response structures. Both are document-processing products; this pair does not establish general record CRUD capability or compatibility with every API or website. Broader claims require further workflow types and an unseen-site evaluation. Operations must remain performable and verifiable through the authenticated UI.
 
+## Browser backend evaluation: Camofox and direct Playwright
+
+Evaluate Camofox Browser as a candidate browser execution service alongside direct Playwright. Camofox wraps the Firefox-based Camoufox browser with an agent-facing REST API. Its documented capabilities include accessibility snapshots, element references, UI actions, screenshots, file uploads, and download retrieval. This REST interface controls browser UI operations; it does not authorize calls to the target site's private business APIs. Sources: [Camofox Browser](https://github.com/jo-inc/camofox-browser), [Camoufox Playwright compatibility](https://camoufox.com/python/usage/).
+
+The proposed layering is Astra Ultra and the Agents SDK → application memory and workflow runner → replaceable browser adapter → Camofox or direct Playwright. Browser selection does not replace the application harness, site learning, durable recipes, operation reconciliation, or API response validation. The Agents SDK remains a proposal. Discovery and deterministic execution share the adapter interface for observations, actions, uploads/downloads, session lifecycle, and exclusive human or agent ownership.
+
+Design constraints from the documentation and source review:
+
+- Save semantic targets and observed selector strategies in recipes, then resolve them against the current page. Camofox's numbered element references are temporary and rebuilt as observations refresh. They must not become durable recipe identifiers. Its reference construction also excludes comboboxes and date/calendar controls; verify selector or keyboard fallbacks on real settings forms. Source: [reference construction and resolution](https://github.com/jo-inc/camofox-browser/blob/master/server.js#L2177).
+- Start the local comparison with a visible browser to support human login and takeover in the same live session. Camofox's desktop mode is selected at startup; seamless conversion of an already-headless Mac session into a visible window has not been established. Its VNC plugin provides access to the running browser through Linux/Xvfb, a separate deployment option. Sources: [desktop mode](https://github.com/jo-inc/camofox-browser#interactive-desktop-browser), [VNC implementation](https://github.com/jo-inc/camofox-browser/blob/master/plugins/vnc/index.js).
+- Check the dedicated-profile requirement explicitly. Camofox's persistence plugin saves authentication-related storage, including cookies and localStorage, with IndexedDB opt-in; this does not establish a full persistent browser profile or preserve live forms and tabs. Verify login survival after restart and retain application-level workflow checkpoints. Source: [persistence implementation](https://github.com/jo-inc/camofox-browser/blob/master/plugins/persistence/index.js).
+- Keep upload and download handling within the UI boundary. Verify file selection, completed download capture, artifact retrieval, and complete result extraction on both pilots. Sources: [upload implementation](https://github.com/jo-inc/camofox-browser/blob/master/server.js#L3519), [download implementation](https://github.com/jo-inc/camofox-browser/blob/master/lib/downloads.js).
+
+Proposed comparison during implementation, using pinned backend versions and equivalent documents, settings, and account conditions on Powder and Reducto:
+
+1. Human login establishes an isolated session. Pause automation, transfer exclusive browser control, then resume after inspecting the resulting page.
+2. Upload a known document, apply supported settings, submit once, verify completion, and retrieve complete output. Validate the response against the same pinned endpoint contract for each backend; record unavailable fields and behavior.
+3. Hand control to the human midway through a settings form. Confirm the live page remains available, reconcile human changes, and resume without duplicate submission.
+4. Restart the browser service and test authentication restoration and recovery from an application checkpoint. Distinguish restored login from restored in-progress page state.
+5. Refresh snapshots and navigate between pages to verify that saved recipes re-resolve their targets. Exercise controls that require selector or keyboard fallback.
+6. Compare correctness, adapter overhead, browser action count, human interventions, and recovery reliability. Measure site processing time separately. Select a backend from observed results and document remaining gaps.
+
+Headless blocking and CAPTCHA are excluded by the agreed prototype assumptions. Stealth features are therefore not a selection requirement. Starting visibly for this comparison is compatible with those assumptions; unattended headless execution and a reliable transition to human help remain separate validation work.
+
+This evaluation currently consists of a documentation and source review. No Camofox installation, benchmark, or authenticated pilot run has been performed.
+
 ## Open decisions
 
 1. Confirm the initial endpoint subsets, obtain full contract snapshots, and identify the authenticated application routes from the supplied entry points.
 2. Select concrete test data and limits for discovery writes and jobs.
 3. Define numerical latency targets; one account with queued browser interactions is the initial operating model.
-4. Confirm the proposed Agents SDK harness and other implementation choices below.
+4. Confirm the proposed Agents SDK harness and other implementation choices below; choose the browser backend after the agreed Camofox/direct Playwright comparison.
 5. Confirm Reducto's initial input modes/settings and whether the supplied Studio workspace is the dedicated test environment.
 6. Select correctness references, such as known test fixtures and representative API responses.
 7. Confirm the caller interface and how it receives requests for login or human attention.
@@ -132,7 +167,7 @@ The Codex desktop harness runs the development and planning session. The browser
 | Responsibility | Proposed component |
 | --- | --- |
 | Broad discovery, interpreting unfamiliar pages, and recovery | Agents SDK with GPT-6 Astra (`gpt-6-astra`), maximum reasoning, and proactive subagent delegation |
-| Page observations, navigation, form actions, uploads, and downloads | Playwright tools restricted to the agreed UI operations |
+| Page observations, navigation, form actions, uploads, and downloads | Replaceable browser adapter; evaluate direct Playwright and Camofox, restricted to the agreed UI operations |
 | Fast execution of verified endpoint workflows | Deterministic recipe runner with input validation, state checks, and result verification |
 | Site knowledge, recipe versions, account mappings, and operation receipts | Persistent application storage, initially SQLite and versioned recipe files |
 | Human login, specific help requests, browser takeover, and resumption | Application control interface with exclusive browser ownership |
@@ -152,7 +187,7 @@ Use Astra with maximum reasoning for the coordinator and its reasoning subagents
 
 - TypeScript service with a local HTTP interface derived from the supplied API contract.
 - OpenAI Agents SDK as the proposed discovery and recovery harness, connected to the browser tools and application state described above.
-- Playwright for browser control, with semantic locators and built-in actionability waits. See [locators](https://playwright.dev/docs/locators) and [auto-waiting](https://playwright.dev/docs/actionability).
+- A replaceable browser adapter, comparing direct Playwright with Camofox before backend selection. Keep semantic target resolution and state assertions in the shared workflow contract. For the Playwright baseline, use [locators](https://playwright.dev/docs/locators) and [auto-waiting](https://playwright.dev/docs/actionability).
 - A constrained workflow format interpreted by the browser runner, so recipes can be inspected, versioned, validated, and repaired.
 - SQLite for the local site map, workflow metadata, account-scoped identifiers, and durable operation state; versioned recipe files for review.
 - Astra Ultra as specified above: GPT-6 Astra (`gpt-6-astra`), maximum API reasoning, and proactive subagent orchestration for LLM-powered discovery, workflow learning, and recovery. The harness recommendation remains distinct from this confirmed model and operating-mode choice.
